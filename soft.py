@@ -10,8 +10,6 @@ import plotly.graph_objects as go
 
 app = dash.Dash(__name__)
 
-# app.layout = html.Div(children=[
-#     html.H1('Nemesys Software by Quantum Minds Tech')
 
 app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, children=[
     html.H1('Nemesys Software by Quantum Minds Tech'), 
