@@ -1,3 +1,4 @@
+import random
 import dash
 from dash import dcc
 from dash import html
@@ -8,51 +9,145 @@ import pandas as pd
 import base64
 import io
 
+#Parte algoritmica
+
+class StopCondition(StopIteration):
+    pass
+
+class Simulation:
+    def __init__(self, G, initial_state, state_transition, stop_condition=None, name=''):
+
+        self.G = G
+        self._initial_state = initial_state
+        self._state_transition = state_transition
+        self._stop_condition = stop_condition
+        if stop_condition and not callable(stop_condition):
+            raise TypeError("'stop_condition' should be a function")
+        self.name = name or 'Simulation'
+
+        self._states = []
+        self._value_index = {}
+        self._cmap = plt.cm.get_cmap('tab10')
+
+        self._initialize()
+
+    def _append_state(self, state):
+        self._states.append(state)
+        for value in set(state.values()):
+            if value not in self._value_index:
+                self._value_index[value] = len(self._value_index)
+
+    def _initialize(self):
+        if self._initial_state:
+            if callable(self._initial_state):
+                state = self._initial_state(self.G)
+            else:
+                state = self._initial_state
+            for n in self.G.nodes():
+                nx.set_node_attributes(self.G, state, 'state')
+
+        if any(self.G.nodes[n].get('state') is None for n in self.G.nodes):
+            raise ValueError('All nodes must have an initial state')
+
+        self._append_state(state)
+
+    def _step(self):
+        state = nx.get_node_attributes(self.G, 'state')
+        if self._stop_condition and self._stop_condition(self.G, state):
+            raise StopCondition
+        new_state = self._state_transition(self.G, state)
+        state.update(new_state)
+        nx.set_node_attributes(self.G, state, 'state')
+        self._append_state(state)
+
+    def _categorical_color(self, value):
+        index = self._value_index[value]
+        node_color = self._cmap(index)
+        return node_color
+
+    @property
+    def steps(self):
+        return len(self._states) - 1
+
+    def state(self, step=-1):
+        try:
+            return self._states[step]
+        except IndexError:
+            raise IndexError('Simulation step %i out of range' % step)
+
+    def run(self, steps=1):
+        for _ in range(steps):
+            try:
+                self._step()
+            except StopCondition as e:
+                print("Stop condition met at step %i." % self.steps)
+                break
+            
+def initial_state(G):
+    state = {node: 'S' for node in G.nodes}
+    patient_zero_1 = random.choice(list(G.nodes))
+    state[patient_zero_1] = 'I'
+    return state
+
+#Parte della web app
+
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 
 app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, children=[
-   html.H1('Nemesys Software by Quantum Minds Tech'), 
-   html.Label('Select Graph Type'),
-   dcc.Dropdown(
-       id='graph-type',
-       options=[
-           {'label': 'Erdos Renyi Graph', 'value': 'erdos_renyi'},
-           {'label': 'GNP Graph', 'value': 'gnp'},
-           {'label': 'Barabasi Albert Graph', 'value': 'barabasi_albert'},
-           {'label': 'Fully Connected Graph', 'value': 'full'}
-       ],
-       value='erdos_renyi', 
-       style={'display': 'block', 'margin-bottom': '10px'}
-   ),
-   html.Label('Number of Nodes'),
-   dcc.Input(
-       id='num-nodes',
-       type='number',
-       value=10,
-       min=1, 
-       max=1000,
-       step=1,
-       style={'display': 'block', 'margin-bottom': '20px'}
-   ),
-   html.Label('Probability for Edge Creation'),
-   dcc.Input(
-       id='probability',
-       type='number',
-       value=0.10,
-       min=0,
-       max=1,
-       step=0.1,
-       style={'display': 'block', 'margin-bottom': '20px'}
-   ),
-   dcc.Graph(id='graph-image', config={'scrollZoom': True, 'doubleClick': 'reset'}),
-   html.Div(children=[
-       html.Button("Download Nodes CSV", id='btn-nodes', n_clicks=0),
-       html.Span(style={'margin-right': '50px'}),
-       html.Button("Download Edges CSV", id='btn-edges', n_clicks=0),
-       html.Span(style={'margin-right': '50px'}),
-       html.Button("Download Graph Image", id='btn-graph', n_clicks=0),
-       dcc.Download(id="download-data"),
-   ], style={'display': 'flex', 'flex-direction': 'row', 'margin': '20px', 'padding' : '20px'}),
+    html.H1('Nemesys Software by Quantum Minds Tech'), 
+    html.Label('Select Graph Type'),
+    dcc.Dropdown(
+        id='graph-type',
+        options=[
+            {'label': 'Erdos Renyi Graph', 'value': 'erdos_renyi'},
+            {'label': 'GNP Graph', 'value': 'gnp'},
+            {'label': 'Barabasi Albert Graph', 'value': 'barabasi_albert'},
+            {'label': 'Fully Connected Graph', 'value': 'full'}
+        ],
+        value='erdos_renyi', 
+        style={'display': 'block', 'margin-bottom': '10px'}
+    ),
+    html.Label('Number of Nodes'),
+    dcc.Input(
+        id='num-nodes',
+        type='number',
+        value=10,
+        min=1, 
+        max=1000,
+        step=1,
+        style={'display': 'block', 'margin-bottom': '20px'}
+    ),
+    html.Label('Probability for Edge Creation'),
+    dcc.Input(
+        id='probability',
+        type='number',
+        value=0.10,
+        min=0,
+        max=1,
+        step=0.1,
+        style={'display': 'block', 'margin-bottom': '20px'}
+    ),
+    dcc.Graph(id='graph-image', config={'scrollZoom': True, 'doubleClick': 'reset'}),
+    html.Div(children=[
+        html.Button("Download Nodes CSV", id='btn-nodes', n_clicks=0),
+        html.Span(style={'margin-right': '50px'}),
+        html.Button("Download Edges CSV", id='btn-edges', n_clicks=0),
+        dcc.Download(id="download-data"),
+    ], style={'display': 'flex', 'flex-direction': 'row', 'margin': '20px', 'padding' : '20px'}),
+
+    html.Div(style={'display': 'flex', 'flex-direction': 'column'}, children=[
+       html.H1('Choose Algorithm for Simulation'), 
+       html.Label('Select Algorithm'),
+       dcc.Dropdown(
+           id='alg-type',
+           options=[
+               {'label': 'SIR Model', 'value': 'sir'},
+               {'label': 'SIRV Model', 'value': 'sirv'},
+           ],
+           value='sir', 
+           style={'display': 'block', 'margin-bottom': '10px'}
+       ),
+   ]),
 ])
 
 G = None
@@ -162,10 +257,8 @@ def download_data(btn_nodes, btn_edges, btn_graph):
         edges_df = pd.DataFrame(edges_data)
         return dcc.send_data_frame(edges_df.to_csv, filename="edges.csv")
     elif trigger_id == 'btn-graph':
-        # Generate a position for each node using the spring layout algorithm
         pos = nx.spring_layout(G)
-
-        # Convert the NetworkX graph to a Plotly graph object
+        
         edge_x = []
         edge_y = []
         for edge in G.edges():
