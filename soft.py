@@ -4,10 +4,71 @@ from dash import dcc
 from dash import html
 from dash.dependencies import Input, Output, State
 import networkx as nx
+import plotly as plt
 import plotly.graph_objects as go
 import pandas as pd
 import base64
 import io
+
+#Algoritmo SIRV
+
+BETA = 0.1
+DELTA= 0.1
+ALPHA = 0.1
+PVACC=0.05
+FEB=0.3
+
+def state_transition_SIRV(G, current_state):
+    
+    BETA = float(dash.callback_context.inputs['input-field-1'])
+    DELTA = float(dash.callback_context.inputs['input-field-2'])
+    ALPHA = float(dash.callback_context.inputs['input-field-3'])
+    PVACC = float(dash.callback_context.inputs['input-field-4'])
+    FEB = float(dash.callback_context.inputs['input-field-5'])
+  
+    next_state = {}
+    
+    for node in G.nodes:
+        if current_state[node] == 'I': #Se è infected può passare a ricovered
+            if random.random() < DELTA:
+                next_state[node] = 'R'
+        elif current_state[node] == 'R': #Da recovered può tornare ad essere susceptible
+            if random.random() < ALPHA:
+                next_state[node] = 'S'
+        else: #Da susceptible può passare a vaccinated
+            if current_state[node] == 'S':
+                if random.random() < PVACC:
+                    next_state[node] = 'V'
+                else: #Oppure in base allo stato dei vicini si può infettare
+                    for neighbor in G.neighbors(node):
+                        if current_state[neighbor] == 'I' :
+                            if random.random() < BETA:
+                                next_state[node] = 'I'
+                                if random.random() < FEB:
+                                    fever = True
+    return next_state
+
+#Algoritmo SIR 
+
+def state_transition_SIR(G, current_state):
+    
+    BETA = float(dash.callback_context.inputs['input-field-1'])
+    GAMMA = float(dash.callback_context.inputs['input-field-2'])
+    
+    next_state = {}
+
+    for node in G.nodes:
+        if current_state[node] == 'I':  # Se è infetto, può recuperare
+            if random.random() < GAMMA:
+                next_state[node] = 'R'
+        elif current_state[node] == 'S':  # Se è suscettibile, può infettarsi
+            for neighbor in G.neighbors(node):
+                if current_state[neighbor] == 'I':
+                    if random.random() < BETA:
+                        next_state[node] = 'I'
+                        break  # Un individuo può essere infettato solo una volta nello stesso passo di simulazione
+
+    return next_state
 
 #Parte algoritmica
 
@@ -136,18 +197,54 @@ app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, chi
     ], style={'display': 'flex', 'flex-direction': 'row', 'margin': '20px', 'padding' : '20px'}),
 
     html.Div(style={'display': 'flex', 'flex-direction': 'column'}, children=[
-       html.H1('Choose Algorithm for Simulation'), 
-       html.Label('Select Algorithm'),
-       dcc.Dropdown(
-           id='alg-type',
-           options=[
-               {'label': 'SIR Model', 'value': 'sir'},
-               {'label': 'SIRV Model', 'value': 'sirv'},
-           ],
-           value='sir', 
-           style={'display': 'block', 'margin-bottom': '10px'}
-       ),
-   ]),
+        html.H1('Choose Algorithm for Simulation'), 
+        html.Label('Select Algorithm'),
+        dcc.Dropdown(
+            id='alg-type',
+            options=[
+                {'label': 'SIR Model', 'value': 'sir'},
+                {'label': 'SIRV Model', 'value': 'sirv'},
+            ],
+            value='sir', 
+            style={'display': 'block', 'margin-bottom': '10px'}
+        ),
+        html.Span(style={'margin': '30px'}),
+        html.Label('ALFA:'),
+        dcc.Input(
+            id='input-field-1',
+            type='number',
+            value='1',
+            style={'display': 'none'},
+        ),
+        html.Label('BETA:'),
+        dcc.Input(
+            id='input-field-2',
+            type='number',
+            value='1',
+            style={'display': 'none'},
+        ),
+        html.Label('GAMMA:'),
+        dcc.Input(
+            id='input-field-3',
+            type='number',
+            value='1',
+            style={'display': 'none'},
+        ),
+        html.Label('PVACC:'),
+        dcc.Input(
+            id='input-field-4',
+            type='number',
+            value='1',
+            style={'display': 'none'},
+        ),
+        html.Label('FEVER:'),
+        dcc.Input(
+            id='input-field-5',
+            type='number',
+            value='1',
+            style={'display': 'none'},
+        ),
+    ]),
 ])
 
 G = None
@@ -227,6 +324,22 @@ def update_graph(graph_type, num_nodes, probability):
     return fig
 
 @app.callback(
+    Output('input-field-1', 'style'),
+    Output('input-field-2', 'style'),
+    Output('input-field-3', 'style'),
+    Output('input-field-4', 'style'),
+    Output('input-field-5', 'style'),
+    Input('alg-type', 'value')
+)
+def update_input_fields(alg_type):
+    if alg_type == 'sir':
+        return {'display': 'block'}, {'display': 'block'}, {'display': 'none'}, {'display': 'none'}, {'display': 'none'}
+    elif alg_type == 'sirv':
+        return {'display': 'block'}, {'display': 'block'}, {'display': 'block'}, {'display': 'block'}, {'display': 'block'}
+    else:
+        return {'display': 'none'}, {'display': 'none'}, {'display': 'none'}, {'display': 'none'}, {'display': 'none'}
+
+@app.callback(
    Output('probability', 'style'),
    [Input('graph-type', 'value')]
 )
@@ -296,7 +409,7 @@ def download_data(btn_nodes, btn_edges, btn_graph):
                     xanchor='left',
                     titleside='right'
                 ),
-                line_width=2))
+            line_width=2))
 
         figure = go.Figure(data=[edge_trace, node_trace],
                             layout=go.Layout(
