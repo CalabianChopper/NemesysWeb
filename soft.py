@@ -154,8 +154,8 @@ app = dash.Dash(__name__, suppress_callback_exceptions=True)
 
 app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, children=[
     html.H1([
-    "Nemesys Software by ",
-    html.A("University of Catanzaro and Quantum Minds Tech", href='https://qmt.pythonanywhere.com')
+    "Nemesys Software by University of Catanzaro and ",
+    html.A("Quantum Minds Tech", href='https://qmt.pythonanywhere.com')
     ]), 
     html.Label('Select The Model of the Network'), #Pietro 03-12 Change
     dcc.Dropdown(
