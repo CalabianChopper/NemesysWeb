@@ -8,8 +8,18 @@ import plotly as plt
 import plotly.graph_objects as go
 import pandas as pd
 import io
+import base64
+from dash.dependencies import Input, Output
+from dash.exceptions import PreventUpdate
+
 
 #Algoritmo SIRV
+
+def initial_state(G):
+    state = {node: 'S' for node in G.nodes}
+    patient_zero_1 = random.choice(list(G.nodes))
+    state[patient_zero_1] = 'I'
+    return state
 
 def state_transition_SIRV(G, current_state):
     
@@ -141,12 +151,6 @@ class Simulation:
             except StopCondition as e:
                 print("Stop condition met at step %i." % self.steps)
                 break
-            
-def initial_state(G):
-    state = {node: 'S' for node in G.nodes}
-    patient_zero_1 = random.choice(list(G.nodes))
-    state[patient_zero_1] = 'I'
-    return state
 
 #Parte della web app
 
@@ -154,22 +158,23 @@ app = dash.Dash(__name__, suppress_callback_exceptions=True)
 
 app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, children=[
     html.H1([
-    "Nemesys Software by ",
+    "Nemesys Software by University of Catanzaro and ",
     html.A("Quantum Minds Tech", href='https://qmt.pythonanywhere.com')
     ]), 
-    html.Label('Select Graph Type'),
+    html.Label('Select The Model of the Network'), #Pietro 03-12 Change
     dcc.Dropdown(
         id='graph-type',
         options=[
-            {'label': 'Erdos Renyi Graph', 'value': 'erdos_renyi'},
-            {'label': 'GNP Graph', 'value': 'gnp'},
-            {'label': 'Barabasi Albert Graph', 'value': 'barabasi_albert'},
-            {'label': 'Fully Connected Graph', 'value': 'full'}
+            {'label': 'Erdos Renyi Network', 'value': 'erdos_renyi'},
+            {'label': 'A GNP Random Graph', 'value': 'gnp'},# occhio mi sa che alla fine networkX GNP e Erdos Reny sono le stesse
+            {'label': 'Barabasi-Albert Network', 'value': 'barabasi_albert'},
+            {'label': 'Stochastic Block Model SBM', 'value': 'sbm'},
+            {'label': 'Fully Connected Network', 'value': 'full'}
         ],
         value='erdos_renyi', 
         style={'display': 'block', 'margin-bottom': '10px'}
     ),
-    html.Label('Number of Nodes'),
+    html.Label('Number of Nodes (or size of clusters SBM)'),
     dcc.Input(
         id='num-nodes',
         type='number',
@@ -179,7 +184,7 @@ app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, chi
         step=1,
         style={'display': 'block', 'margin-bottom': '20px'}
     ),
-    html.Label('Probability for Edge Creation'),
+    html.Label('Edge Probability between Nodes (or number of clusters for SBM)'),
     dcc.Input(
         id='probability',
         type='number',
@@ -198,8 +203,8 @@ app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, chi
     ], style={'display': 'flex', 'flex-direction': 'row', 'margin': '20px', 'padding' : '20px'}),
 
     html.Div(style={'display': 'flex', 'flex-direction': 'column'}, children=[
-        html.H1('Select Algorithm for Simulation'), 
-        html.Label('Select Algorithm'),
+        html.H1('Select the Simulation Model'), 
+        html.Label('Select Model'),
         dcc.Dropdown(
             id='alg-type',
             options=[
@@ -259,7 +264,11 @@ app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, chi
             max='1',
             step='0.1',
             style={'display': 'none'},
-        ),
+        ),   
+    ]), 
+    html.Div([
+        html.Span(style={'margin': '15px'}),
+        html.Button(id='simulation-button', children='Run Simulation', n_clicks=0),
     ]),
 ])
 
@@ -279,6 +288,18 @@ def update_graph(graph_type, num_nodes, probability):
         G = nx.barabasi_albert_graph(num_nodes, 3)
     elif graph_type == 'full':
         G = nx.complete_graph(num_nodes)
+    elif graph_type == 'sbm':# ho scritto con i piedi va ottimizzato, NS deve essere una lista di dimensione PROBABILITY e fatta tutta da elementi uguali a NUM_NODES
+        ns = list()# size of clusters
+        ps2= list()
+        ps=list()
+        for i in range(probability):
+            ns.append(num_nodes)
+            ps2.append(random.random())
+        for i in range(probability):
+            ps.append(ps2)
+        #ps = [[0.3, 0.01, 0.01], [0.01, 0.3, 0.01], [0.01, 0.01, 0.3]] # probability of edge
+        G = nx.stochastic_block_model(ns, ps)
+        #G = nx.stochastic_block_model(num_nodes, probability, nodelist=None, seed=None, directed=False, selfloops=False, sparse=True)
     else:
         raise ValueError('Invalid graph type')
 

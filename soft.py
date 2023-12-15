@@ -8,8 +8,18 @@ import plotly as plt
 import plotly.graph_objects as go
 import pandas as pd
 import io
+import base64
+from dash.dependencies import Input, Output
+from dash.exceptions import PreventUpdate
+
 
 #Algoritmo SIRV
+
+def initial_state(G):
+    state = {node: 'S' for node in G.nodes}
+    patient_zero_1 = random.choice(list(G.nodes))
+    state[patient_zero_1] = 'I'
+    return state
 
 def state_transition_SIRV(G, current_state):
     
@@ -78,7 +88,7 @@ class Simulation:
 
         self.G = G
         self._initial_state = initial_state
-        self._state_transition = state_transition
+        self._state_transition_function = state_transition #Modificato
         self._stop_condition = stop_condition
         if stop_condition and not callable(stop_condition):
             raise TypeError("'stop_condition' should be a function")
@@ -114,7 +124,14 @@ class Simulation:
         state = nx.get_node_attributes(self.G, 'state')
         if self._stop_condition and self._stop_condition(self.G, state):
             raise StopCondition
-        new_state = self._state_transition(self.G, state)
+        
+        if self._state_transition_function == state_transition_SIR: #Modificato
+            new_state = state_transition_SIR(self.G, state)
+        elif self._state_transition_function == state_transition_SIRV:
+            new_state = state_transition_SIRV(self.G, state)
+        else:
+            raise ValueError(f"Invalid state transition function: {self._state_transition_function}")
+        
         state.update(new_state)
         nx.set_node_attributes(self.G, state, 'state')
         self._append_state(state)
@@ -141,12 +158,6 @@ class Simulation:
             except StopCondition as e:
                 print("Stop condition met at step %i." % self.steps)
                 break
-            
-def initial_state(G):
-    state = {node: 'S' for node in G.nodes}
-    patient_zero_1 = random.choice(list(G.nodes))
-    state[patient_zero_1] = 'I'
-    return state
 
 #Parte della web app
 
@@ -164,7 +175,7 @@ app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, chi
             {'label': 'Erdos Renyi Network', 'value': 'erdos_renyi'},
             {'label': 'A GNP Random Graph', 'value': 'gnp'},# occhio mi sa che alla fine networkX GNP e Erdos Reny sono le stesse
             {'label': 'Barabasi-Albert Network', 'value': 'barabasi_albert'},
-            {'label': 'Stochastic Block Model SBM', 'value': 'sb,m'}
+            {'label': 'Stochastic Block Model SBM', 'value': 'sbm'},
             {'label': 'Fully Connected Network', 'value': 'full'}
         ],
         value='erdos_renyi', 
@@ -260,7 +271,11 @@ app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, chi
             max='1',
             step='0.1',
             style={'display': 'none'},
-        ),
+        ),   
+    ]), 
+    html.Div([
+        html.Span(style={'margin': '15px'}),
+        html.Button(id='simulation-button', children='Run Simulation', n_clicks=0),
     ]),
 ])
 
@@ -287,7 +302,7 @@ def update_graph(graph_type, num_nodes, probability):
         for i in range(probability):
             ns.append(num_nodes)
             ps2.append(random.random())
-         for i in range(probability):
+        for i in range(probability):
             ps.append(ps2)
         #ps = [[0.3, 0.01, 0.01], [0.01, 0.3, 0.01], [0.01, 0.01, 0.3]] # probability of edge
         G = nx.stochastic_block_model(ns, ps)
