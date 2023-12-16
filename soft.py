@@ -475,6 +475,28 @@ def download_data(btn_nodes, btn_edges, btn_graph):
         return dcc.send_bytes(img_str_io, filename="graph.png")
     else:
         return None
+    
+@app.callback(
+    Output('simulation-graph', 'figure'),
+    [Input('simulation-button', 'n_clicks')],
+)
+def update_simulation_graph(n_clicks):
+    if n_clicks > 0:
+        selected_alg_type = dash.callback_context.inputs['alg-type']['value']
+        
+        if selected_alg_type == 'sir':
+            _state_transition_function = state_transition_SIR
+        elif selected_alg_type == 'sirv':
+            _state_transition_function = state_transition_SIRV
+        else:
+            raise ValueError(f"Invalid algorithm type: {selected_alg_type}")
+        
+        simulation = Simulation(G, initial_state, _state_transition_function)
+
+        # Run the simulation for the specified number of steps
+        imm = simulation.run(10)
+
+    return imm
 
 if __name__ == '__main__':
   app.run_server(debug=True)
