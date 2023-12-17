@@ -1,0 +1,105 @@
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulation Web App</title>
+</head>
+<body>
+    <h1>Simulation Web App</h1>
+    <button onclick="runSimulation()">Run Simulation</button>
+    <div id="plot"></div>
+
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script>
+        function runSimulation() {
+            fetch('/run_simulation/10') // Change 10 to the desired number of steps
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById('plot').innerHTML = data;
+                });
+        }
+    </script>
+</body>
+</html> -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inserisci il Numero di Nodi</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        label, select {
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        input, select {
+            padding: 8px;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 10px 16px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h2>Inserisci il Numero di Nodi e Scegli il Tipo di Grafo</h2>
+    <form id="nodeForm" action="/generate_graph" method="post">
+        <label for="numNodes">Numero di Nodi:</label>
+        <input type="number" id="numNodes" name="numNodes" min="1" value="1" required>
+
+        <label for="graphType">Tipo di Grafo:</label>
+        <select id="graphType" name="graphType">
+            <option value="erdos_renyi">Erdos Renyi Network</option>
+            <option value="barabasi_albert">Barabasi-Albert Network</option>
+            <option value="gnp_random">GNP Random Graph</option>
+            <option value="fully_connected">Fully Connected Network</option>
+        </select>
+
+        <button type="submit" id="submitButton">Genera Grafo</button>
+    </form>
+
+    <script>
+        document.getElementById('nodeForm').addEventListener('submit', function (event) {
+            event.preventDefault(); 
+            submitForm();
+        });
+    
+        function submitForm() {
+            var numNodes = document.getElementById('numNodes').value;
+            var graphType = document.getElementById('graphType').value;
+    
+            fetch('/generate_graph', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ numNodes: numNodes, graphType: graphType })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('Grafo generato con successo!');
+            })
+            .catch(error => {
+                console.error('Errore durante la generazione del grafo:', error);
+            });
+        }
+    </script>   
+</body>
+</html>
+
