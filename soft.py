@@ -1,16 +1,17 @@
 import random
 import dash
-from dash import dcc
-from dash import html
+from dash import dcc, html
 from dash.dependencies import Input, Output, State
 import networkx as nx
 import plotly as plt
 import plotly.graph_objects as go
 import pandas as pd
 import io
-import base64
 from dash.dependencies import Input, Output
 from dash.exceptions import PreventUpdate
+import matplotlib.pyplot as plt
+from collections import Counter
+import matplotlib as mpl
 
 
 #Algoritmo SIRV
@@ -21,28 +22,27 @@ def initial_state(G):
     state[patient_zero_1] = 'I'
     return state
 
-def state_transition_SIRV(G, current_state):
-    
-    ALPHA = float(dash.callback_context.inputs['input-field-1'])
-    BETA = float(dash.callback_context.inputs['input-field-2'])
-    GAMMA = float(dash.callback_context.inputs['input-field-3'])
-    PVACC = float(dash.callback_context.inputs['input-field-4'])
-    FEB = float(dash.callback_context.inputs['input-field-5'])
-  
+def state_transition_SIRV(G, current_state, alpha, beta, gamma, pvacc, feb):
+    ALPHA = float(alpha)
+    BETA = float(beta)
+    GAMMA = float(gamma)
+    PVACC = float(pvacc)
+    FEB = float(feb)
+
     next_state = {}
     
     for node in G.nodes:
-        if current_state[node] == 'I': #Se è infected può passare a ricovered
+        if current_state[node] == 'I': # Se è infetto, può passare a ricoverato
             if random.random() < BETA:
                 next_state[node] = 'R'
-        elif current_state[node] == 'R': #Da recovered può tornare ad essere susceptible
+        elif current_state[node] == 'R': # Da ricoverato può tornare ad essere suscettibile
             if random.random() < GAMMA:
                 next_state[node] = 'S'
-        else: #Da susceptible può passare a vaccinated
+        else: # Da suscettibile può passare a vaccinato
             if current_state[node] == 'S':
                 if random.random() < PVACC:
                     next_state[node] = 'V'
-                else: #Oppure in base allo stato dei vicini si può infettare
+                else: # Oppure in base allo stato dei vicini può infettarsi
                     for neighbor in G.neighbors(node):
                         if current_state[neighbor] == 'I' :
                             if random.random() < ALPHA:
@@ -54,29 +54,29 @@ def state_transition_SIRV(G, current_state):
 
 #Algoritmo SIR 
 
-def state_transition_SIR(G, current_state):
-    
-    ALPHA = float(dash.callback_context.inputs['input-field-1'])
-    BETA = float(dash.callback_context.inputs['input-field-2'])
-    GAMMA = float(dash.callback_context.inputs['input-field-3'])
+def state_transition_SIR(G, current_state, alpha, beta, gamma):
+    ALPHA = float(alpha)
+    BETA = float(beta)
+    GAMMA = float(gamma)
     
     next_state = {}
 
     for node in G.nodes:
-        if current_state[node] == 'I':  # Se è infetto, può essere ricoverato
+        if current_state[node] == 'I':
             if random.random() < BETA:
                 next_state[node] = 'R'
-        elif current_state[node] == 'R': #Da recovered può tornare ad essere susceptible
+        elif current_state[node] == 'R':
             if random.random() < GAMMA:
                 next_state[node] = 'S'
-        else:  # Se è suscettibile, può infettarsi
+        else:
             for neighbor in G.neighbors(node):
                 if current_state[neighbor] == 'I':
                     if random.random() < ALPHA:
                         next_state[node] = 'I'
-                        break  # Un individuo può essere infettato solo una volta nello stesso passo di simulazione
+                        break
 
     return next_state
+
 
 #Parte algoritmica
 
@@ -151,6 +151,51 @@ class Simulation:
         except IndexError:
             raise IndexError('Simulation step %i out of range' % step)
 
+    def draw(self, step=-1, labels=None, **kwargs):
+        state = self.state(step)
+        node_colors = [self._categorical_color(state[n]) for n in self.G.nodes]
+        nx.draw(self.G, pos=self._pos, node_color=node_colors, **kwargs)
+
+        if labels is None:
+            labels = sorted(set(state.values()), key=self._value_index.get)
+        patches = [mpl.patches.Patch(color=self._categorical_color(l), label=l)
+                   for l in labels]
+        plt.legend(handles=patches)
+
+        if step == -1:
+            step = self.steps
+        if step == 0:
+            title = 'initial state'
+        else:
+            title = 'step %i' % (step)
+        if self.name:
+            title = '{}: {}'.format(self.name, title)
+        plt.title(title)
+
+    def plot(self, min_step=None, max_step=None, labels=None, **kwargs):
+        x_range = range(min_step or 0, max_step or len(self._states))
+        counts = [Counter(s.values()) for s in self._states[min_step:max_step]]
+        if labels is None:
+            labels = {k for count in counts for k in count}
+            labels = sorted(labels, key=self._value_index.get)
+
+        for label in labels:
+            series = [count.get(label, 0) / sum(count.values()) for count in counts]
+            plt.plot(x_range, series, label=label, **kwargs)
+
+        title = 'node state proportions'
+        if self.name:
+            title = '{}: {}'.format(self.name, title)
+        plt.title(title)
+        plt.xlabel('Simulation step')
+        plt.ylabel('Proportion of nodes')
+        plt.legend()
+        plt.xlim(x_range.start)
+        
+        plt.show()
+
+        return plt.gca()
+
     def run(self, steps=1):
         for _ in range(steps):
             try:
@@ -158,12 +203,13 @@ class Simulation:
             except StopCondition as e:
                 print("Stop condition met at step %i." % self.steps)
                 break
+        return self
 
 #Parte della web app
 
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 
-app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, children=[
+app.layout = html.Div(style={'display': 'flex', 'flexDirection': 'column'}, children=[
     html.H1([
     "Nemesys Software by University of Catanzaro and ",
     html.A("Quantum Minds Tech", href='https://qmt.pythonanywhere.com')
@@ -179,7 +225,7 @@ app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, chi
             {'label': 'Fully Connected Network', 'value': 'full'}
         ],
         value='erdos_renyi', 
-        style={'display': 'block', 'margin-bottom': '10px'}
+        style={'display': 'block', 'marginBottom': '10px'}
     ),
     html.Label('Number of Nodes (or size of clusters SBM)'),
     dcc.Input(
@@ -189,7 +235,7 @@ app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, chi
         min=1, 
         max=1000,
         step=1,
-        style={'display': 'block', 'margin-bottom': '20px'}
+        style={'display': 'block', 'marginBottom': '20px'}
     ),
     html.Label('Edge Probability between Nodes (or number of clusters for SBM)'),
     dcc.Input(
@@ -199,17 +245,17 @@ app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, chi
         min=0,
         max=1,
         step=0.1,
-        style={'display': 'block', 'margin-bottom': '20px'}
+        style={'display': 'block', 'marginBottom': '20px'}
     ),
     dcc.Graph(id='graph-image', config={'scrollZoom': True, 'doubleClick': 'reset'}),
     html.Div(children=[
         html.Button("Download Nodes CSV", id='btn-nodes', n_clicks=0),
-        html.Span(style={'margin-right': '50px'}),
+        html.Span(style={'marginRight': '50px'}),
         html.Button("Download Edges CSV", id='btn-edges', n_clicks=0),
         dcc.Download(id="download-data"),
-    ], style={'display': 'flex', 'flex-direction': 'row', 'margin': '20px', 'padding' : '20px'}),
+    ], style={'display': 'flex', 'flexDirection': 'row', 'margin': '20px', 'padding' : '20px'}),
 
-    html.Div(style={'display': 'flex', 'flex-direction': 'column'}, children=[
+    html.Div(style={'display': 'flex', 'flexDirection': 'column'}, children=[
         html.H1('Select the Simulation Model'), 
         html.Label('Select Model'),
         dcc.Dropdown(
@@ -219,7 +265,7 @@ app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, chi
                 {'label': 'SIRV Model', 'value': 'sirv'},
             ],
             value='sir', 
-            style={'display': 'block', 'margin-bottom': '10px'}
+            style={'display': 'block', 'marginBottom': '10px'}
         ),
         html.Span(style={'margin': '15px'}),
         html.Label('ALPHA (S->I):'),
@@ -230,7 +276,7 @@ app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, chi
             min='0',
             max='1',
             step='0.1',
-            style={'display': 'none'},
+            style={'display': 'block', 'margin': '10px'},
         ),
         html.Label('BETA (I->R):'),
         dcc.Input(
@@ -240,7 +286,7 @@ app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, chi
             min='0',
             max='1',
             step='0.1',
-            style={'display': 'none'},
+            style={'display': 'block', 'margin': '10px'},
         ),
         html.Label('GAMMA (R->S):'),
         dcc.Input(
@@ -250,7 +296,7 @@ app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, chi
             min='0',
             max='1',
             step='0.1',
-            style={'display': 'none'},
+            style={'display': 'block', 'margin': '10px'},
         ),
         html.Label('PVACC (S->V):'),
         dcc.Input(
@@ -260,7 +306,7 @@ app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, chi
             min='0',
             max='1',
             step='0.1',
-            style={'display': 'none'},
+            style={'display': 'block', 'margin': '10px'},
         ),
         html.Label('FEVER (I->F):'),
         dcc.Input(
@@ -270,12 +316,15 @@ app.layout = html.Div(style={'display': 'flex', 'flex-direction': 'column'}, chi
             min='0',
             max='1',
             step='0.1',
-            style={'display': 'none'},
-        ),   
+            style={'display': 'block', 'margin': '10px'},
+        ),
+   
     ]), 
     html.Div([
         html.Span(style={'margin': '15px'}),
         html.Button(id='simulation-button', children='Run Simulation', n_clicks=0),
+        html.Span(style={'margin': '15px'}),
+        dcc.Graph(id='simulation-graph'),  
     ]),
 ])
 
@@ -475,28 +524,51 @@ def download_data(btn_nodes, btn_edges, btn_graph):
         return dcc.send_bytes(img_str_io, filename="graph.png")
     else:
         return None
-    
+
 @app.callback(
     Output('simulation-graph', 'figure'),
     [Input('simulation-button', 'n_clicks')],
+    [State('alg-type', 'value')],
+    [State('graph-type', 'value'), State('num-nodes', 'value'), State('probability', 'value')],
+    prevent_initial_call=True
 )
-def update_simulation_graph(n_clicks):
+def run_simulation(n_clicks, selected_alg_type, graph_type, num_nodes, probability):
+    print("Callback executed")
     if n_clicks > 0:
-        selected_alg_type = dash.callback_context.inputs['alg-type']['value']
-        
+        # Creazione del grafo
+        if graph_type == 'erdos_renyi':
+            G = nx.erdos_renyi_graph(num_nodes, probability)
+        elif graph_type == 'gnp':
+            G = nx.gnp_random_graph(num_nodes, probability)
+        elif graph_type == 'barabasi_albert':
+            G = nx.barabasi_albert_graph(num_nodes, 3)
+        elif graph_type == 'full':
+            G = nx.complete_graph(num_nodes)
+        elif graph_type == 'sbm':
+            ns = [num_nodes] * probability
+            ps2 = [random.random() for _ in range(probability)]
+            ps = [ps2] * probability
+            G = nx.stochastic_block_model(ns, ps)
+        else:
+            raise ValueError('Invalid graph type')
+
+        # Selezione della funzione di transizione di stato
         if selected_alg_type == 'sir':
             _state_transition_function = state_transition_SIR
         elif selected_alg_type == 'sirv':
             _state_transition_function = state_transition_SIRV
         else:
             raise ValueError(f"Invalid algorithm type: {selected_alg_type}")
-        
+
+        # Esecuzione della simulazione
         simulation = Simulation(G, initial_state, _state_transition_function)
+        simulation_result = simulation.run(10)
 
-        # Run the simulation for the specified number of steps
-        imm = simulation.run(10)
+        # Restituzione del grafico
+        return simulation_result.plot()
 
-    return imm
+    # Restituisci un grafico vuoto o None se il pulsante non è stato premuto
+    return go.Figure()
 
 if __name__ == '__main__':
   app.run_server(debug=True)
